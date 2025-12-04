@@ -1,13 +1,27 @@
 import React, { useState } from 'react';
 
 export const Settings: React.FC = () => {
-  const [businessName, setBusinessName] = useState('ReplenishHQ Store');
-  const [email, setEmail] = useState('info@replenishhq.com');
-  const [phone, setPhone] = useState('+234-801-234-5678');
-  const [address, setAddress] = useState('123 Commerce Street, Abuja, Nigeria');
-  const [currency, setCurrency] = useState('NGN');
-  const [taxRate, setTaxRate] = useState(15);
-  const [receiptHeader, setReceiptHeader] = useState('Welcome to ReplenishHQ');
+  // Load settings from localStorage or use defaults
+  const loadSettings = () => {
+    try {
+      const saved = localStorage.getItem('replenishhq_business_settings');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    }
+    return null;
+  };
+
+  const savedSettings = loadSettings();
+  const [businessName, setBusinessName] = useState(savedSettings?.businessName || 'ReplenishHQ Store');
+  const [email, setEmail] = useState(savedSettings?.email || 'info@replenishhq.com');
+  const [phone, setPhone] = useState(savedSettings?.phone || '+234-801-234-5678');
+  const [address, setAddress] = useState(savedSettings?.address || '123 Commerce Street, Abuja, Nigeria');
+  const [currency, setCurrency] = useState(savedSettings?.currency || 'NGN');
+  const [taxRate, setTaxRate] = useState(savedSettings?.taxRate || 15);
+  const [receiptHeader, setReceiptHeader] = useState(savedSettings?.receiptHeader || 'Welcome to ReplenishHQ');
   const [autoBackup, setAutoBackup] = useState(true);
   const [emailNotif, setEmailNotif] = useState(true);
   const [lowStockNotif, setLowStockNotif] = useState(true);
@@ -15,6 +29,16 @@ export const Settings: React.FC = () => {
   const [dailyNotif, setDailyNotif] = useState(false);
 
   const handleSaveBusinessSettings = () => {
+    const businessSettings = {
+      businessName,
+      email,
+      phone,
+      address,
+      currency,
+      taxRate,
+      receiptHeader,
+    };
+    localStorage.setItem('replenishhq_business_settings', JSON.stringify(businessSettings));
     alert('Business settings saved successfully!');
   };
 

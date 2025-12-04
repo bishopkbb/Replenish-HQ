@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CartItem, ReceiptData, Product, Customer } from '@/types';
 import { formatCurrency } from '@/utils/format';
 import { dataManager } from '@/utils/dataManager';
-import { Users } from 'lucide-react';
+import { Users, Printer } from 'lucide-react';
 
 export const POS: React.FC = () => {
   const [products, setProducts] = useState<Product[]>(() => dataManager.getProducts());
@@ -20,6 +20,7 @@ export const POS: React.FC = () => {
   const [showCustomerSelect, setShowCustomerSelect] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
+  const receiptRef = useRef<HTMLDivElement>(null);
 
   // Listen for product updates
   useEffect(() => {
@@ -140,6 +141,200 @@ export const POS: React.FC = () => {
     
     // Refresh products to show updated stock
     setProducts(dataManager.getProducts());
+  };
+
+  const handlePrintReceipt = () => {
+    if (!receiptRef.current) return;
+    
+    // Get business settings from localStorage or use defaults
+    const businessSettings = JSON.parse(
+      localStorage.getItem('replenishhq_business_settings') || '{}'
+    );
+
+    // Create a new window for printing
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Please allow popups to print receipt');
+      return;
+    }
+
+    const businessName = businessSettings.businessName || 'ReplenishHQ Store';
+    const businessAddress = businessSettings.address || '';
+    const businessPhone = businessSettings.phone || '';
+    const businessEmail = businessSettings.email || '';
+
+    const tax = receiptData ? receiptData.total * 0.15 : 0;
+    const subtotal = receiptData ? receiptData.total : 0;
+    const total = receiptData ? receiptData.total * 1.15 : 0;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Receipt - ${receiptData?.id || ''}</title>
+          <style>
+            @media print {
+              @page {
+                size: 80mm auto;
+                margin: 0;
+              }
+              body {
+                margin: 0;
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 12px;
+              }
+            }
+            body {
+              margin: 0;
+              padding: 10px;
+              font-family: 'Courier New', monospace;
+              font-size: 12px;
+              max-width: 300px;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 1px dashed #000;
+              padding-bottom: 10px;
+              margin-bottom: 10px;
+            }
+            .business-name {
+              font-weight: bold;
+              font-size: 16px;
+              margin-bottom: 5px;
+            }
+            .business-info {
+              font-size: 10px;
+              color: #666;
+              margin: 2px 0;
+            }
+            .receipt-info {
+              margin: 10px 0;
+              font-size: 11px;
+            }
+            .receipt-info p {
+              margin: 3px 0;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 10px 0;
+            }
+            th {
+              text-align: left;
+              border-bottom: 1px solid #000;
+              padding: 5px 0;
+              font-size: 11px;
+            }
+            td {
+              padding: 4px 0;
+              font-size: 11px;
+            }
+            .text-right {
+              text-align: right;
+            }
+            .totals {
+              border-top: 1px dashed #000;
+              padding-top: 10px;
+              margin-top: 10px;
+            }
+            .total-row {
+              display: flex;
+              justify-content: space-between;
+              margin: 5px 0;
+            }
+            .grand-total {
+              font-weight: bold;
+              font-size: 14px;
+              border-top: 2px solid #000;
+              padding-top: 5px;
+              margin-top: 5px;
+            }
+            .footer {
+              text-align: center;
+              margin-top: 20px;
+              padding-top: 10px;
+              border-top: 1px dashed #000;
+              font-size: 10px;
+              color: #666;
+            }
+            .thank-you {
+              text-align: center;
+              margin-top: 15px;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="business-name">${businessName}</div>
+            ${businessAddress ? `<div class="business-info">${businessAddress}</div>` : ''}
+            ${businessPhone ? `<div class="business-info">Tel: ${businessPhone}</div>` : ''}
+            ${businessEmail ? `<div class="business-info">${businessEmail}</div>` : ''}
+          </div>
+          
+          <div class="receipt-info">
+            <p><strong>Receipt ID:</strong> ${receiptData?.id || ''}</p>
+            <p><strong>Date:</strong> ${receiptData?.date || ''}</p>
+            <p><strong>Time:</strong> ${receiptData?.time || ''}</p>
+            ${selectedCustomer ? `<p><strong>Customer:</strong> ${selectedCustomer.name}</p>` : ''}
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th class="text-right">Qty</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${receiptData?.items.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td class="text-right">${item.qty}</td>
+                  <td class="text-right">${formatCurrency(item.price * item.qty)}</td>
+                </tr>
+              `).join('') || ''}
+            </tbody>
+          </table>
+          
+          <div class="totals">
+            <div class="total-row">
+              <span>Subtotal:</span>
+              <span>${formatCurrency(subtotal)}</span>
+            </div>
+            <div class="total-row">
+              <span>Tax (15%):</span>
+              <span>${formatCurrency(tax)}</span>
+            </div>
+            <div class="total-row grand-total">
+              <span>Total:</span>
+              <span>${formatCurrency(total)}</span>
+            </div>
+          </div>
+          
+          <div class="thank-you">
+            Thank you for your purchase!
+          </div>
+          
+          <div class="footer">
+            <p>This is a computer-generated receipt</p>
+            <p>No signature required</p>
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    
+    // Wait for content to load, then print
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+      // Close the window after printing (optional)
+      // printWindow.close();
+    }, 250);
   };
 
   const handleClearCart = () => {
@@ -283,12 +478,15 @@ export const POS: React.FC = () => {
 
       {showReceipt && receiptData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
+          <div ref={receiptRef} className="bg-white p-4 sm:p-6 rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-2xl font-bold mb-4 text-center">Receipt</h2>
             <div className="border-b pb-4 mb-4 text-sm">
               <p><strong>Receipt ID:</strong> {receiptData.id}</p>
               <p><strong>Date:</strong> {receiptData.date}</p>
               <p><strong>Time:</strong> {receiptData.time}</p>
+              {selectedCustomer && (
+                <p><strong>Customer:</strong> {selectedCustomer.name}</p>
+              )}
             </div>
             <div className="mb-4">
               <table className="w-full text-sm">
@@ -311,12 +509,29 @@ export const POS: React.FC = () => {
               </table>
             </div>
             <div className="border-t pt-4 mb-4">
-              <div className="flex justify-between font-bold text-lg">
-                <span>Grand Total:</span>
-                <span>{formatCurrency(receiptData.total)}</span>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span>{formatCurrency(receiptData.total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Tax (15%):</span>
+                  <span>{formatCurrency(receiptData.total * 0.15)}</span>
+                </div>
+                <div className="flex justify-between font-bold text-lg border-t pt-2">
+                  <span>Grand Total:</span>
+                  <span>{formatCurrency(receiptData.total * 1.15)}</span>
+                </div>
               </div>
             </div>
             <div className="space-y-2">
+              <button
+                onClick={handlePrintReceipt}
+                className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <Printer size={18} />
+                Print Receipt
+              </button>
               <button
                 onClick={handleCompletePayment}
                 className="w-full bg-green-600 text-white py-2 rounded font-semibold hover:bg-green-700 transition-colors"
