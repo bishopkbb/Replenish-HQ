@@ -36,7 +36,14 @@ const MOCK_CUSTOMERS: Customer[] = [
 ];
 
 export const Customers: React.FC = () => {
-  const [customers, setCustomers] = useState<Customer[]>(MOCK_CUSTOMERS);
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    try {
+      const saved = localStorage.getItem('replenishhq_customers');
+      return saved ? JSON.parse(saved) : MOCK_CUSTOMERS;
+    } catch {
+      return MOCK_CUSTOMERS;
+    }
+  });
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [formData, setFormData] = useState({
@@ -74,7 +81,9 @@ export const Customers: React.FC = () => {
       loyaltyPoints: 0,
     };
 
-    setCustomers([...customers, newCustomer]);
+    const updated = [...customers, newCustomer];
+    setCustomers(updated);
+    localStorage.setItem('replenishhq_customers', JSON.stringify(updated));
     setFormData({ name: '', email: '', phone: '', address: '' });
     setShowModal(false);
     setErrors([]);

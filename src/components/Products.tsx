@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Product } from '@/types';
-import { MOCK_PRODUCTS, PRODUCT_CATEGORIES } from '@/utils/constants';
+import { PRODUCT_CATEGORIES } from '@/utils/constants';
 import { validateProduct } from '@/utils/validation';
 import { formatCurrency } from '@/utils/format';
+import { dataManager } from '@/utils/dataManager';
 
 export const Products: React.FC = () => {
-  const [products, setProducts] = useState<Product[]>(MOCK_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>(() => dataManager.getProducts());
+
+  // Listen for product updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      setProducts(dataManager.getProducts());
+    };
+    window.addEventListener('productsUpdated', handleUpdate);
+    return () => window.removeEventListener('productsUpdated', handleUpdate);
+  }, []);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({
@@ -29,8 +39,10 @@ export const Products: React.FC = () => {
 
     setErrors([]);
 
+    let updatedProducts: Product[];
+    
     if (editingId) {
-      setProducts(products.map(p => p.id === editingId ? {
+      updatedProducts = products.map(p => p.id === editingId ? {
         ...p,
         name: formData.name,
         sku: formData.sku,
@@ -39,8 +51,8 @@ export const Products: React.FC = () => {
         stock: parseInt(formData.stock),
         threshold: parseInt(formData.threshold),
         category: formData.category,
-        status: p.stock === 0 ? 'out' : p.stock <= p.threshold ? 'low' : 'ok',
-      } : p));
+        status: parseInt(formData.stock) === 0 ? 'out' : parseInt(formData.stock) <= parseInt(formData.threshold) ? 'low' : 'ok',
+      } : p);
       setEditingId(null);
     } else {
       const newProduct: Product = {
@@ -54,9 +66,11 @@ export const Products: React.FC = () => {
         category: formData.category,
         status: parseInt(formData.stock) === 0 ? 'out' : parseInt(formData.stock) <= parseInt(formData.threshold) ? 'low' : 'ok',
       };
-      setProducts([...products, newProduct]);
+      updatedProducts = [...products, newProduct];
     }
     
+    setProducts(updatedProducts);
+    dataManager.saveProducts(updatedProducts);
     setFormData({ name: '', sku: '', price: '', cost: '', stock: '', threshold: '', category: '' });
     setShowModal(false);
   };
@@ -78,7 +92,9 @@ export const Products: React.FC = () => {
 
   const handleDeleteProduct = (id: number) => {
     if (window.confirm('Are you sure you want to delete this product?')) {
-      setProducts(products.filter(p => p.id !== id));
+      const updated = products.filter(p => p.id !== id);
+      setProducts(updated);
+      dataManager.saveProducts(updated);
     }
   };
 

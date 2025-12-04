@@ -1,10 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Supplier } from '@/types';
-import { MOCK_SUPPLIERS } from '@/utils/constants';
 import { validateSupplier } from '@/utils/validation';
+import { dataManager } from '@/utils/dataManager';
 
 export const Suppliers: React.FC = () => {
-  const [suppliers, setSuppliers] = useState<Supplier[]>(MOCK_SUPPLIERS);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => dataManager.getSuppliers());
+
+  useEffect(() => {
+    const handleUpdate = () => {
+      setSuppliers(dataManager.getSuppliers());
+    };
+    window.addEventListener('suppliersUpdated', handleUpdate);
+    return () => window.removeEventListener('suppliersUpdated', handleUpdate);
+  }, []);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState({ name: '', email: '', phone: '' });
@@ -20,20 +28,24 @@ export const Suppliers: React.FC = () => {
 
     setErrors([]);
 
+    let updated: Supplier[];
+    
     if (editingId) {
-      setSuppliers(suppliers.map(s => s.id === editingId ? {
+      updated = suppliers.map(s => s.id === editingId ? {
         ...s,
         ...formData,
-      } : s));
+      } : s);
       setEditingId(null);
     } else {
       const newSupplier: Supplier = {
         id: Math.max(...suppliers.map(s => s.id), 0) + 1,
         ...formData,
       };
-      setSuppliers([...suppliers, newSupplier]);
+      updated = [...suppliers, newSupplier];
     }
     
+    setSuppliers(updated);
+    dataManager.saveSuppliers(updated);
     setFormData({ name: '', email: '', phone: '' });
     setShowModal(false);
   };
@@ -51,7 +63,9 @@ export const Suppliers: React.FC = () => {
 
   const handleDeleteSupplier = (id: number) => {
     if (window.confirm('Are you sure you want to delete this supplier?')) {
-      setSuppliers(suppliers.filter(s => s.id !== id));
+      const updated = suppliers.filter(s => s.id !== id);
+      setSuppliers(updated);
+      dataManager.saveSuppliers(updated);
     }
   };
 

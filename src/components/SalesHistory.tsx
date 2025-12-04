@@ -85,10 +85,10 @@ export const SalesHistory: React.FC = () => {
     };
 
     window.addEventListener('storage', handleNewSale);
-    window.addEventListener('newSaleAdded', handleNewSale);
+    window.addEventListener('salesUpdated', handleNewSale);
     return () => {
       window.removeEventListener('storage', handleNewSale);
-      window.removeEventListener('newSaleAdded', handleNewSale);
+      window.removeEventListener('salesUpdated', handleNewSale);
     };
   }, []);
 

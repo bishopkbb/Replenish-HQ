@@ -1,16 +1,45 @@
-import React, { useState } from 'react';
-import { CartItem, ReceiptData } from '@/types';
-import { MOCK_PRODUCTS } from '@/utils/constants';
+import React, { useState, useEffect } from 'react';
+import { CartItem, ReceiptData, Product, Customer } from '@/types';
 import { formatCurrency } from '@/utils/format';
+import { dataManager } from '@/utils/dataManager';
+import { Users } from 'lucide-react';
 
 export const POS: React.FC = () => {
+  const [products, setProducts] = useState<Product[]>(() => dataManager.getProducts());
+  const [customers] = useState(() => {
+    try {
+      const saved = localStorage.getItem('replenishhq_customers');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [showCustomerSelect, setShowCustomerSelect] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [receiptData, setReceiptData] = useState<ReceiptData | null>(null);
 
-  const addToCart = (product: typeof MOCK_PRODUCTS[0]) => {
+  // Listen for product updates
+  useEffect(() => {
+    const handleUpdate = () => {
+      setProducts(dataManager.getProducts());
+    };
+    window.addEventListener('productsUpdated', handleUpdate);
+    return () => window.removeEventListener('productsUpdated', handleUpdate);
+  }, []);
+
+  const addToCart = (product: Product) => {
     const existing = cart.find(item => item.id === product.id);
+    const currentQty = existing ? existing.qty : 0;
+    
+    // Check if adding one more would exceed stock
+    if (currentQty + 1 > product.stock) {
+      alert(`Cannot add more. Only ${product.stock} units available in stock.`);
+      return;
+    }
+
     if (existing) {
       setCart(cart.map(item => 
         item.id === product.id 
@@ -31,6 +60,15 @@ export const POS: React.FC = () => {
       removeFromCart(id);
       return;
     }
+    
+    // Check stock availability
+    const product = products.find(p => p.id === id);
+    
+    if (product && qty > product.stock) {
+      alert(`Cannot order ${qty} units. Only ${product.stock} units available in stock.`);
+      return;
+    }
+    
     setCart(cart.map(item => 
       item.id === id ? {...item, qty} : item
     ));
@@ -54,43 +92,54 @@ export const POS: React.FC = () => {
   };
 
   const handleCompletePayment = () => {
-    // Save sale to localStorage for Sales History
-    if (receiptData) {
-      const sale = {
-        id: receiptData.id,
-        date: receiptData.date,
-        time: receiptData.time,
-        customerName: 'Walk-in Customer',
-        items: receiptData.items.map(item => ({
-          productId: item.id,
-          productName: item.name,
-          sku: item.sku,
-          quantity: item.qty,
-          unitPrice: item.price,
-          total: item.price * item.qty,
-        })),
-        subtotal: receiptData.total,
-        tax: receiptData.total * 0.15, // 15% tax
-        discount: 0,
-        total: receiptData.total * 1.15,
-        paymentMethod: 'cash' as const,
-        status: 'completed' as const,
-      };
+    if (!receiptData) return;
 
-      // Get existing sales from localStorage
-      const existingSales = JSON.parse(localStorage.getItem('replenishhq_sales') || '[]');
-      existingSales.unshift(sale); // Add to beginning
-      // Keep only last 100 sales to prevent localStorage overflow
-      const limitedSales = existingSales.slice(0, 100);
-      localStorage.setItem('replenishhq_sales', JSON.stringify(limitedSales));
-      // Dispatch event to update Sales History page
-      window.dispatchEvent(new Event('newSaleAdded'));
+    // Validate stock one more time before completing
+    for (const item of receiptData.items) {
+      const product = products.find(p => p.id === item.id);
+      if (!product || product.stock < item.qty) {
+        alert(`Insufficient stock for ${item.name}. Available: ${product?.stock || 0}`);
+        return;
+      }
     }
 
-    alert('Payment successful! Receipt sent.');
+    // Update stock for each item
+    receiptData.items.forEach(item => {
+      dataManager.updateProductStock(item.id, -item.qty);
+    });
+
+    // Save sale
+    const sale = {
+      id: receiptData.id,
+      date: receiptData.date,
+      time: receiptData.time,
+      customerName: selectedCustomer?.name || 'Walk-in Customer',
+      customerId: selectedCustomer?.id,
+      items: receiptData.items.map(item => ({
+        productId: item.id,
+        productName: item.name,
+        sku: item.sku,
+        quantity: item.qty,
+        unitPrice: item.price,
+        total: item.price * item.qty,
+      })),
+      subtotal: receiptData.total,
+      tax: receiptData.total * 0.15,
+      discount: 0,
+      total: receiptData.total * 1.15,
+      paymentMethod: 'cash' as const,
+      status: 'completed' as const,
+    };
+
+    dataManager.addSale(sale);
+
+    alert('Payment successful! Stock updated.');
     setCart([]);
     setShowReceipt(false);
     setReceiptData(null);
+    
+    // Refresh products to show updated stock
+    setProducts(dataManager.getProducts());
   };
 
   const handleClearCart = () => {
@@ -103,7 +152,7 @@ export const POS: React.FC = () => {
     }
   };
 
-  const filteredProducts = MOCK_PRODUCTS.filter(p => 
+  const filteredProducts = products.filter(p => 
     p.stock > 0 && (
       p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.sku.toLowerCase().includes(searchQuery.toLowerCase())
@@ -113,7 +162,43 @@ export const POS: React.FC = () => {
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
       <div className="lg:col-span-2">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-4">Point of Sale</h1>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-4">
+          <h1 className="text-2xl sm:text-3xl font-bold">Point of Sale</h1>
+          <div className="relative">
+            <button
+              onClick={() => setShowCustomerSelect(!showCustomerSelect)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm sm:text-base"
+            >
+              <Users size={18} />
+              {selectedCustomer ? selectedCustomer.name : 'Select Customer'}
+            </button>
+            {showCustomerSelect && (
+              <div className="absolute right-0 top-full mt-2 w-64 bg-white border rounded-lg shadow-lg z-50 max-h-64 overflow-y-auto">
+                <button
+                  onClick={() => {
+                    setSelectedCustomer(null);
+                    setShowCustomerSelect(false);
+                  }}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-100 border-b"
+                >
+                  Walk-in Customer
+                </button>
+                {customers.map((customer: Customer) => (
+                  <button
+                    key={customer.id}
+                    onClick={() => {
+                      setSelectedCustomer(customer);
+                      setShowCustomerSelect(false);
+                    }}
+                    className="w-full text-left px-4 py-2 hover:bg-gray-100"
+                  >
+                    {customer.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
         <div className="bg-white p-3 sm:p-4 rounded-lg shadow mb-4">
           <input
             type="text"
